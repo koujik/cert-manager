@@ -1,0 +1,368 @@
+{% extends 'certificates/base.html' %}
+
+{% block title %}ダッシュボード - AegisCert{% endblock %}
+
+{% block content %}
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-icon active">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+        </div>
+        <div class="stat-info">
+            <span class="stat-val">{{ total_active }}</span>
+            <span class="stat-lbl">有効な証明書</span>
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon expired">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+        </div>
+        <div class="stat-info">
+            <span class="stat-val">{{ total_expired }}</span>
+            <span class="stat-lbl">期限切れ</span>
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon revoked">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" /></svg>
+        </div>
+        <div class="stat-info">
+            <span class="stat-val">{{ total_revoked }}</span>
+            <span class="stat-lbl">失効済み</span>
+        </div>
+    </div>
+</div>
+
+<div class="dashboard-grid">
+    <!-- Main Certificates Table -->
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--glass-border); padding-bottom: 16px;">
+            <h2>発行済み証明書一覧</h2>
+            <button class="btn btn-primary" onclick="openModal()">➕ 証明書を発行する</button>
+        </div>
+        
+        <div class="table-container">
+            {% if certs %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Common Name / 種類</th>
+                        <th>シリアル番号</th>
+                        <th>発行日 / 期限</th>
+                        <th>ステータス</th>
+                        <th>ダウンロード / 操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cert in certs %}
+                    <tr>
+                        <td>
+                            <div class="cert-cn">{{ cert.common_name }}</div>
+                            <span class="badge {% if cert.cert_type == 'server' %}badge-success{% else %}badge-warning{% endif %}" style="font-size:0.7rem; padding: 2px 6px; margin-top:4px;">
+                                {% if cert.cert_type == 'server' %}サーバー{% else %}クライアント{% endif %}
+                            </span>
+                        </td>
+                        <td class="cert-meta">
+                            {{ cert.serial_number|slice:":15" }}...
+                        </td>
+                        <td>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary);">自: {{ cert.issued_at|date:"Y-m-d H:i" }}</div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">至: {{ cert.expires_at|date:"Y-m-d H:i" }}</div>
+                        </td>
+                        <td>
+                            {% if cert.is_revoked %}
+                            <span class="badge badge-danger">失効済</span>
+                            {% elif cert.is_expired %}
+                            <span class="badge badge-warning">期限切</span>
+                            {% else %}
+                            <span class="badge badge-success">有効</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="action-links">
+                                {% if not cert.is_revoked %}
+                                <a href="{% url 'download_cert_file' cert.id 'zip' %}" class="btn btn-secondary btn-sm" title="一括ダウンロード (ZIP)">
+                                    📦 ZIP
+                                </a>
+                                <a href="{% url 'download_cert_file' cert.id 'cert' %}" class="btn btn-secondary btn-sm" title="証明書のみ (.crt)">
+                                    📜 Cert
+                                </a>
+                                {% if cert.private_key_pem %}
+                                <a href="{% url 'download_cert_file' cert.id 'key' %}" class="btn btn-secondary btn-sm" title="秘密鍵のみ (.key)">
+                                    🔑 Key
+                                </a>
+                                {% endif %}
+                                <a href="{% url 'revoke_cert_view' cert.id %}" class="btn btn-danger btn-sm" onclick="return confirm('本当にこの証明書を失効させますか？この操作は取り消せません。');" title="証明書を失効">
+                                    失効
+                                </a>
+                                {% else %}
+                                <span style="color: var(--text-muted); font-size: 0.8rem;">操作不可</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                発行済みの証明書はありません。右上のボタンから新規発行してください。
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- CA status / settings -->
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+        <div class="card">
+            <h3>認証局 (Root CA) 情報</h3>
+            <div class="ca-info-block">
+                <div class="ca-data-row">
+                    <span class="ca-data-label">Common Name</span>
+                    <span class="ca-data-val">{{ active_ca.common_name }}</span>
+                </div>
+                <div class="ca-data-row">
+                    <span class="ca-data-label">組織名 (O)</span>
+                    <span class="ca-data-val">{{ active_ca.organization }}</span>
+                </div>
+                <div class="ca-data-row">
+                    <span class="ca-data-label">国コード (C)</span>
+                    <span class="ca-data-val">{{ active_ca.country }}</span>
+                </div>
+                <div class="ca-data-row">
+                    <span class="ca-data-label">有効期限</span>
+                    <span class="ca-data-val {% if is_ca_expired %}color: var(--danger){% endif %}">
+                        {{ active_ca.valid_until|date:"Y-m-d H:i" }}
+                    </span>
+                </div>
+                <div class="ca-data-row">
+                    <span class="ca-data-label">状態</span>
+                    <span class="ca-data-val">
+                        {% if is_ca_expired %}
+                        <span class="badge badge-danger">期限切れ</span>
+                        {% else %}
+                        <span class="badge badge-success">稼働中</span>
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+            
+            <div style="margin-top: 24px; display: flex; flex-direction: column; gap: 10px;">
+                <a href="{% url 'download_ca' %}" class="btn btn-primary" style="width:100%;">
+                    🛡️ CA 証明書をダウンロード
+                </a>
+                <a href="{% url 'download_crl' %}" class="btn btn-secondary" style="width:100%;">
+                    📋 CRL (失効リスト) を取得
+                </a>
+            </div>
+        </div>
+        
+        <div class="card" style="background: rgba(139, 92, 246, 0.03);">
+            <h3>証明書の使用方法</h3>
+            <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 10px; line-height: 1.6;">
+                1. <strong>CA証明書の登録:</strong> クライアントデバイスやブラウザに <code>ca.crt</code> を「信頼されたルート証明機関」としてインポートします。<br><br>
+                2. <strong>証明書と鍵の配置:</strong> サーバー証明書を発行した場合、Webサーバー (Nginx, Apache等) のSSL設定で証明書と秘密鍵を指定します。<br><br>
+                3. <strong>失効チェック:</strong> 失効リスト (CRL) を公開することで、失効した証明書の接続を拒否させることが可能です。
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Issue Certificate Modal -->
+<div class="modal-overlay" id="issueModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>証明書の新規発行</h3>
+            <button class="modal-close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        
+        <div class="tab-container">
+            <button class="tab-btn active" onclick="switchTab('keygen')">鍵と証明書を同時生成</button>
+            <button class="tab-btn" onclick="switchTab('csr')">CSRを署名する</button>
+            <button class="tab-btn" onclick="switchTab('letsencrypt')">Let's Encrypt (ACME)</button>
+        </div>
+        
+        <div class="modal-body">
+            <!-- KEYGEN FORM -->
+            <div id="keygenTab" class="tab-content active">
+                <form action="{% url 'issue_cert' %}" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="issuer_type" value="local">
+                    
+                    <div class="form-group">
+                        <label for="id_common_name">共通名 (Common Name / CN) *</label>
+                        <input type="text" name="common_name" id="id_common_name" class="form-control" placeholder="例: myserver.local または user@domain" required>
+                        <span class="sans-help">FQDN (ホスト名) またはユーザーの識別子</span>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="id_cert_type">用途 / 種類 *</label>
+                            <select name="cert_type" id="id_cert_type" class="form-control" onchange="toggleSANs(this.value)">
+                                <option value="server" selected>サーバー証明書</option>
+                                <option value="client">クライアント証明書</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="id_validity_days">有効期間 (日) *</label>
+                            <input type="number" name="validity_days" id="id_validity_days" class="form-control" value="365" required>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="id_organization">組織名 (O)</label>
+                            <input type="text" name="organization" id="id_organization" class="form-control" placeholder="空欄の場合CAの値を引き継ぎます">
+                        </div>
+                        <div class="form-group">
+                            <label for="id_country">国コード (C)</label>
+                            <input type="text" name="country" id="id_country" class="form-control" placeholder="例: JP" maxlength="2">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group" id="sans-group">
+                        <label for="id_sans">サブジェクト代替名 (SANs)</label>
+                        <input type="text" name="sans" id="id_sans" class="form-control" placeholder="例: localhost, 127.0.0.1, mail.local">
+                        <span class="sans-help">サーバー用。複数の場合はカンマ(,)で区切って指定（IPアドレス、DNSドメイン対応）</span>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 15px;">
+                        鍵と証明書を生成して発行
+                    </button>
+                </form>
+            </div>
+            
+            <!-- CSR SIGN FORM -->
+            <div id="csrTab" class="tab-content">
+                <form action="{% url 'issue_cert' %}" method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <input type="hidden" name="issuer_type" value="local">
+                    
+                    <div class="form-group">
+                        <label for="id_csr_file">CSR ファイル (.csr, .pem) *</label>
+                        <input type="file" name="csr_file" id="id_csr_file" class="form-control" accept=".csr,.pem,.txt" required>
+                        <span class="sans-help">お手元のマシンで生成した署名要求ファイルを選択します。秘密鍵はサーバーに送信されません。</span>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="id_csr_cert_type">用途 / 種類 *</label>
+                            <select name="cert_type" id="id_csr_cert_type" class="form-control">
+                                <option value="server" selected>サーバー証明書</option>
+                                <option value="client">クライアント証明書</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="id_csr_validity_days">有効期間 (日) *</label>
+                            <input type="number" name="validity_days" id="id_csr_validity_days" class="form-control" value="365" required>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 15px;">
+                        CSR に署名して証明書を発行
+                    </button>
+                </form>
+            </div>
+            
+            <!-- LETSENCRYPT FORM -->
+            <div id="letsencryptTab" class="tab-content">
+                <form action="{% url 'issue_cert' %}" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="issuer_type" value="letsencrypt">
+                    
+                    <div class="form-group">
+                        <label for="id_le_common_name">ドメイン名 (Domain Name / CN) *</label>
+                        <input type="text" name="common_name" id="id_le_common_name" class="form-control" placeholder="例: sub.yourdomain.com" required>
+                        <span class="sans-help">Let's Encrypt が検証可能な公開用ドメイン名（IPアドレスやlocalhostは無効です）</span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="id_le_acme_email">ACME 連絡用メールアドレス *</label>
+                        <input type="email" name="acme_email" id="id_le_acme_email" class="form-control" value="{{ user.email|default:'admin@example.com' }}" placeholder="例: admin@yourdomain.com" required>
+                        <span class="sans-help">Let's Encrypt アカウントの登録、更新通知等に使用されます</span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="id_le_use_staging">Let's Encrypt 環境 *</label>
+                        <select name="use_staging" id="id_le_use_staging" class="form-control">
+                            <option value="true" selected>Staging (検証環境 - テスト用・回数制限なし)</option>
+                            <option value="false">Production (本番環境 - 信頼された証明書・回数制限あり)</option>
+                        </select>
+                    </div>
+                    
+                    <div style="background: rgba(244, 63, 94, 0.08); border: 1px solid rgba(244, 63, 94, 0.2); border-radius: var(--radius-sm); padding: 16px; margin: 20px 0;">
+                        <p style="font-size: 0.85rem; color: var(--danger); font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                            ⚠️ 重要な要件
+                        </p>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; line-height: 1.5;">
+                            Let's Encrypt サーバーが、入力されたドメインの HTTP ポート <code>80</code> (http://[domain]/.well-known/acme-challenge/...) にアクセスできる必要があります。<br>
+                            このサーバーがそのドメイン名で<strong>外部（インターネット）からアクセス可能な状態</strong>にない場合、検証は失敗します。
+                        </p>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 15px;">
+                        Let's Encrypt で証明書を発行
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const modal = document.getElementById('issueModal');
+    
+    function openModal() {
+        modal.classList.add('active');
+    }
+    
+    function closeModal() {
+        modal.classList.remove('active');
+    }
+    
+    // Close modal when clicking overlay
+    window.onclick = function(event) {
+        if (event.target == modal) {
+            closeModal();
+        }
+    }
+    
+    function switchTab(tab) {
+        const keygenTab = document.getElementById('keygenTab');
+        const csrTab = document.getElementById('csrTab');
+        const letsencryptTab = document.getElementById('letsencryptTab');
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        
+        tabBtns.forEach(btn => btn.classList.remove('active'));
+        
+        keygenTab.classList.remove('active');
+        csrTab.classList.remove('active');
+        letsencryptTab.classList.remove('active');
+        
+        if (tab === 'keygen') {
+            keygenTab.classList.add('active');
+            tabBtns[0].classList.add('active');
+        } else if (tab === 'csr') {
+            csrTab.classList.add('active');
+            tabBtns[1].classList.add('active');
+        } else if (tab === 'letsencrypt') {
+            letsencryptTab.classList.add('active');
+            tabBtns[2].classList.add('active');
+        }
+    }
+    
+    function toggleSANs(certType) {
+        const sansGroup = document.getElementById('sans-group');
+        if (certType === 'client') {
+            sansGroup.style.display = 'none';
+        } else {
+            sansGroup.style.display = 'block';
+        }
+    }
+</script>
+
+{% endblock %}

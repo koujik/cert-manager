@@ -1,0 +1,69 @@
+{% extends 'certificates/base.html' %}
+
+{% block title %}認証局 (CA) 初期構築 - AegisCert{% endblock %}
+
+{% block content %}
+<div style="max-width: 600px; margin: 40px auto;">
+    <div class="card">
+        <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px; border-bottom: 1px solid var(--glass-border); padding-bottom: 16px;">
+            <div style="width: 50px; height: 50px; border-radius: 50%; background: var(--accent-glow); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+                🛡️
+            </div>
+            <div>
+                <h2>Root CA 認証局の初期設定</h2>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 4px;">
+                    自動証明書発行を開始するには、まず独自のルート認証局（Root CA）を構築する必要があります。
+                </p>
+            </div>
+        </div>
+
+        <form method="post" action="{% url 'setup_ca' %}">
+            {% csrf_token %}
+            
+            <div class="form-group">
+                <label for="common_name">共通名 (Common Name / CN)</label>
+                <input type="text" name="common_name" id="common_name" class="form-control" placeholder="例: AegisCert Root CA" required>
+                <span class="sans-help">CAの識別子となる主要な名称です。</span>
+            </div>
+
+            <div class="form-group">
+                <label for="organization">組織名 (Organization / O)</label>
+                <input type="text" name="organization" id="organization" class="form-control" placeholder="例: Aegis Org" required>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="country">国名コード (Country / C)</label>
+                    <input type="text" name="country" id="country" class="form-control" placeholder="例: JP" maxlength="2" required>
+                    <span class="sans-help">2文字の国名コード (JP, US, etc.)</span>
+                </div>
+                
+                <div class="form-group">
+                    <label for="validity_days">有効期間 (日)</label>
+                    <select name="validity_days" id="validity_days" class="form-control">
+                        <option value="3650" selected>10年 (3650日) - 推奨</option>
+                        <option value="1825">5年 (1825日)</option>
+                        <option value="7300">20年 (7300日)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: var(--radius-sm); padding: 16px; margin: 24px 0;">
+                <p style="font-size: 0.85rem; color: var(--warning); font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                    ⚠️ 注意事項
+                </p>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; line-height: 1.5;">
+                    ルートCAの秘密鍵はデータベースに保存されます。ローカル開発・プライベートな自動証明書発行サーバとしての利用を前提としており、パブリックなトラストラインや本番のエンタープライズセキュリティでの不用意な公開には注意してください。
+                </p>
+            </div>
+<div class="form-group form-check">
+    <input type="checkbox" class="form-check-input" name="use_kms" id="use_kms" value="true">
+    <label class="form-check-label" for="use_kms">vHSM KMSバックエンドを使用する</label>
+</div>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">
+                Root CA を生成して構築する
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
